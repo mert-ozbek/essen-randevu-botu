@@ -18,7 +18,7 @@ try {
   assert.ok(candidate, 'Positive fixture needs a disabled day');
   await page.evaluate(day => {
     const cell = [...document.querySelectorAll('.duet-date__day.is-month')].find(e => Number(e.querySelector('[aria-hidden="true"]').textContent) === day);
-    cell.classList.remove('is-disabled'); cell.removeAttribute('disabled'); cell.setAttribute('aria-disabled','false');
+    cell.classList.remove('is-disabled'); cell.removeAttribute('disabled'); cell.removeAttribute('aria-disabled'); cell.setAttribute('title','Datum ist verfügbar');
   }, candidate.day);
   const after = await page.evaluate(readCalendarDocument);
   assert.ok(after.days.includes(candidate.day));
