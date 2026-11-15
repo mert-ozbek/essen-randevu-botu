@@ -35,7 +35,7 @@ async function sendTelegram(message) {
 
 async function alertUser(dates) {
   console.log('\x07\n*** UYGUN GÜN BULUNDU ***\n' + dates.join('\n') + '\n' + URL);
-  await sendTelegram(`Essen 16d: seçilebilir gün bulundu!\n${dates.join('\n')}\n${URL}\nRandevu oluşturulmadı; siteden kontrol edin.`);
+  await sendTelegram(`🚨 ÖNEMLİ — RANDEVU BULUNDU\n\nEssen 16d için seçilebilir günler:\n${dates.join('\n')}\n\nHemen kontrol edin: ${URL}\nRandevu oluşturulmadı; uygunluk değişebilir.`);
   if (process.platform === 'win32') {
     // Sabit komut: site içeriği PowerShell koduna eklenmez.
     spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command',
