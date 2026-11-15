@@ -6,8 +6,6 @@ on:
         description: 'Telegram göndermeden yalnızca siteyi test et'
         type: boolean
         default: true
-  schedule:
-    - cron: '*/5 * * * *'
 permissions:
   contents: read
 concurrency:
