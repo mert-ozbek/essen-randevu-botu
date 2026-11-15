@@ -1,0 +1,32 @@
+name: Takvim doğrulama ve kanıt raporu
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test calendar.test.mjs
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Gerçek sitede her ayı fotoğrafla ve raporla
+        run: npm run check
+        env:
+          BOT_AUDIT: '1'
+          GITHUB_ACTIONS: 'false'
+      - name: Kaydedilen takvim kopyasında yapay uygun gün testi
+        run: node browser-fixture-test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: takvim-kanitlari
+          path: |
+            audit/
+            hatalar/
+          retention-days: 7
