@@ -17,6 +17,7 @@ jobs:
       - name: Grubu bul ve gruba test mesajı gönder
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
@@ -34,6 +35,14 @@ jobs:
               } catch { throw new Error('Telegram bağlantısı başarısız.'); }
               if (!response.ok || !data.ok) throw new Error('Telegram API işlemi başarısız: ' + method + '. Anahtarı ve bot ayarlarını kontrol edin.');
               return data.result;
+            }
+            const configured = process.env.TELEGRAM_CHAT_ID;
+            if (configured) {
+              const group = await call('getChat', {chat_id:configured});
+              if (!['group','supergroup'].includes(group.type)) throw new Error('Kaydedilen kimlik bir gruba ait değil.');
+              await call('sendMessage', {chat_id:configured, text:'✅ Essen randevu botu: GitHub Secrets üzerinden grup bildirim testi başarılı. Randevu bulunduğunda bu gruba haber verilecek. Bu mesaj bir randevu bildirimi değildir.'});
+              console.log('Kaydedilen grup kimliği doğrulandı ve test mesajı gönderildi.');
+              process.exit(0);
             }
             const me = await call('getMe');
             const updates = await call('getUpdates', {timeout:0, limit:100, allowed_updates:['message']});
