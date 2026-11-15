@@ -1,22 +1,36 @@
 # Essen 16d randevu kontrolü
 
-## GitHub Actions ile bilgisayar kapalıyken
+## Bilgisayar kapalıyken çalışma
 
-GitHub'da `essen-randevu-botu` adlı Public repository oluşturun. Bu klasörün kod dosyalarını ve `.github/workflows/kontrol.yml` dosyasını varsayılan dala yükleyin. `node_modules`, sonuçlar ve hata ekran görüntülerini yüklemeyin.
+Tarama GitHub Actions üzerinde çalışır. cron-job.org, `kontrol.yml` iş akışını 5 dakikada bir, `durum.yml` iş akışını Europe/Berlin saat diliminde 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00 ve 21:00 saatlerinde başlatır. Hizmetlerde gecikme olabilir; tamamlanan taramayı GitHub çalışma kayıtlarından doğrulayın. Çift çalışmayı önlemek için GitHub'ın yerleşik cron tetikleyicileri kaldırılmıştır.
 
-Telegram'da resmi @BotFather hesabına `/newbot` göndererek bot oluşturun. Verdiği token gizlidir; sohbete veya kod dosyasına yapıştırmayın. Kendi botunuzu açıp Start'a basın. Kendi sohbetinizin chat ID değerini edinmeniz de gerekir.
+Telegram grup bilgileri GitHub Actions Secrets içinde `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` olarak tutulur. GitHub erişim anahtarı yalnızca cron-job.org Authorization başlığında tutulur; koda, sohbete veya kayıt dosyalarına koymayın. Anahtar 16 Şubat 2027 tarihinde sona erer; süre dolmadan yenileyip iki cron işinde de güncelleyin.
 
-GitHub repository → Settings → Secrets and variables → Actions → New repository secret yolundan `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` ekleyin.
+## Zamanlayıcı istekleri
 
-Actions → Essen 16d randevu kontrolü → Run workflow ile ilk kontrolü başlatın. Yeşil sonuç tam taramanın tamamlandığını, kırmızı sonuç kontrol veya bildirim hatasını gösterir. Henüz bulutta çalıştırılarak doğrulanmamıştır.
+İki iş de POST yöntemiyle GitHub API'sine çağrı yapar. Başlıklar: `Accept: application/vnd.github+json`, `Content-Type: application/json`, `Authorization: Bearer <gizli anahtar>`.
 
-Zamanlama yaklaşık 5 dakikada birdir; GitHub geciktirebilir veya yoğunlukta çalıştırmayı düşürebilir. Açık depoda 60 gün etkinlik yoksa zamanlama devre dışı kalabilir. Her görev yeni başladığından uygun gün devam ederse her kontrolde tekrar bildirim gönderir. GitHub Actions kullanım kuralları ve ücretsiz plan sınırları geçerlidir. Telegram anahtarı yalnızca Secrets içinde tutulmalıdır.
+Tarama URL'si: `https://api.github.com/repos/mert-ozbek/essen-randevu-botu/actions/workflows/kontrol.yml/dispatches`
 
-Bot 16d (Ärzte/Apotheker) → Ja → 1 kişi yolunu izler ve bugün ile bir yıl sonrası arasındaki seçilebilir günleri kontrol eder. Gün veya saat seçmez, rezervasyon yapmaz, kişisel bilgi girmez, 6. adıma geçmez.
+İstek gövdesi: `{"ref":"main","inputs":{"scan_only":false}}`
 
-## Kurulum
+Durum raporu URL'si: `https://api.github.com/repos/mert-ozbek/essen-randevu-botu/actions/workflows/durum.yml/dispatches`
 
-Node.js kurulu olmalı. Bu klasörde PowerShell açıp:
+İstek gövdesi: `{"ref":"main"}`
+
+HTTP 204, GitHub'ın başlatma isteğini kabul ettiğini gösterir; taramanın başarılı olduğunu göstermez. GitHub Actions içindeki tamamlanmış yeşil iş ve aylık tarama kayıtları ayrıca kontrol edilmelidir. Dış zamanlayıcı ile başlatılan işler GitHub'da `workflow_dispatch` / Manually run olarak görünür. Otomatik çağrının kanıtı cron-job.org History kaydı ile eşleşen GitHub çalışmasıdır.
+
+## Ne taranır?
+
+Bot §16d (Ärzte/Apotheker) → Ja → 1 kişi yolunu izler. Bugün ile bir yıl sonrası arasındaki seçilebilir günleri 13 takvim ayı görünümünde kontrol eder. Gün/saat seçmez, rezervasyon yapmaz, kişisel bilgi girmez. Uygun gün, saat veya rezervasyon garantisi değildir.
+
+Uygun gün bulunursa gruba “🚨 ÖNEMLİ — RANDEVU BULUNDU” bildirimi gider. Üç saatlik başarılı tam tarama sonrasında 🔄 durum raporu gönderilir. Hata, “randevu yok” olarak değerlendirilmez. Takvim yapısı değişirse kontrol hata verir; CAPTCHA veya erişim engeli aşılmaz.
+
+## Doğrulama ve yerel kullanım
+
+`node --test calendar.test.mjs status.test.mjs` takvim ayrıştırma ve rapor testlerini çalıştırır. GitHub'daki manuel “Takvim doğrulama ve kanıt raporu” işi ekran görüntüleri ve JSON kanıtları üretir; Telegram mesajı göndermez.
+
+Yerel kullanım için Node.js kurulu olmalıdır:
 
 ```powershell
 npm install
@@ -24,21 +38,6 @@ npx playwright install chromium
 npm run check
 ```
 
-Tek kontrol başarılıysa sürekli çalıştırmak için `baslat.cmd` dosyasını çift tıklayın veya `npm start` yazın. Pencere açık, bilgisayar uyanık ve internet bağlı olmalı. Durdurmak için Ctrl+C.
+Sürekli yerel kullanım: `npm start` veya `baslat.cmd`. Yerel kullanımda bilgisayar açık ve uyanık kalmalıdır. `CHECK_SECONDS` varsayılan 300 saniyedir; `SHOW_BROWSER=1` görünür tarayıcı açar. Bulut kullanımında bilgisayarın açık olması gerekmez.
 
-Varsayılan aralık 5 dakika (+ en fazla 15 saniye gecikme). Değiştirmek için:
-
-```powershell
-$env:CHECK_SECONDS="300"
-npm start
-```
-
-Görünür tarayıcıyla teşhis için `$env:SHOW_BROWSER="1"` ayarlayın.
-
-## Bildirim ve sonuçlar
-
-Uygun gün bulunduğunda Windows sesli uyarı ve mesaj penceresi gösterir. `uygun-gunler.json` tarihleri ve bağlantıyı içerir. Aynı sonuç değişmedikçe aynı çalıştırmada tekrar uyarı verilmez. Randevuyu bağlantıdan kendiniz almalısınız; seçilebilir gün bir uygunluk sinyalidir, saat veya rezervasyon garantisi değildir.
-
-`son-kontrol.json` yalnızca tamamlanan taramadan sonra güncellenir. Hata, randevu yok olarak değerlendirilmez; konsolda açıkça belirtilir ve `hatalar/son-hata.png` kaydedilir. Hatalarda kontrol aralığı artar. CAPTCHA/erişim engeli aşılmaz; böyle bir durumda kontrol başarısız olur.
-
-Bu sürüm yerel bilgisayarda bildirim verir, telefona mesaj göndermez. Bilgisayar kapalıyken çalışmaz. Site değişirse seçicilerin güncellenmesi gerekebilir. Tek örnek çalıştırın.
+Uygun gün aynı kalırsa ayrı GitHub çalıştırmalarında bildirim tekrarlanabilir. Açık depo GitHub Actions kullanım koşulları ve ücretsiz kullanım sınırlarına tabidir. Gizli bilgiler yalnızca ilgili hizmetin gizli alanlarında saklanmalıdır.
