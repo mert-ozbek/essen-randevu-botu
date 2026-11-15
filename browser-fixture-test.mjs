@@ -9,6 +9,10 @@ try {
   const page = await browser.newPage();
   const file = (await readdir('audit')).filter(f=>f.endsWith('.html')).sort()[0];
   await page.setContent(await readFile(`audit/${file}`,'utf8'));
+  const captured = JSON.parse(await readFile(`audit/${file.replace('.html','.json')}`,'utf8'));
+  // A select's live value is not serialized by outerHTML; restore captured values.
+  await page.locator('.duet-date__select--month').selectOption(String(captured.month));
+  await page.locator('.duet-date__select--year').selectOption(String(captured.year));
   const before = await page.evaluate(readCalendarDocument);
   const candidate = before.records.find(r => !r.available);
   assert.ok(candidate, 'Positive fixture needs a disabled day');
