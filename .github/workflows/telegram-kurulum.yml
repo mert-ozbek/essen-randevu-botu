@@ -1,0 +1,54 @@
+name: Telegram grup kurulumu
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: telegram-grup-kurulumu
+  cancel-in-progress: false
+jobs:
+  kurulum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Grubu bul ve gruba test mesajı gönder
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          try {
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            if (!token) throw new Error('TELEGRAM_BOT_TOKEN Secret eksik.');
+            async function call(method, body = {}) {
+              let response, data;
+              try {
+                response = await fetch('https://api.telegram.org/bot' + token + '/' + method, {
+                  method: 'POST', headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify(body), signal: AbortSignal.timeout(20000)
+                });
+                data = await response.json();
+              } catch { throw new Error('Telegram bağlantısı başarısız.'); }
+              if (!response.ok || !data.ok) throw new Error('Telegram API işlemi başarısız: ' + method + '. Anahtarı ve bot ayarlarını kontrol edin.');
+              return data.result;
+            }
+            const me = await call('getMe');
+            const updates = await call('getUpdates', {timeout:0, limit:100, allowed_updates:['message']});
+            const groups = new Map();
+            for (const update of updates) {
+              const m = update.message;
+              if (!m || !['group','supergroup'].includes(m.chat.type)) continue;
+              if (m.date < Date.now()/1000 - 3600) continue;
+              const command = (m.text || '').trim().split(/\s+/)[0].toLowerCase();
+              if (command !== '/start@' + me.username.toLowerCase()) continue;
+              groups.set(String(m.chat.id), m.chat.id);
+            }
+            if (groups.size !== 1) throw new Error('Tek bir grup bulunamadı. Hedef gruba /start@BOT_KULLANICI_ADI mesajını yeniden gönderin.');
+            const id = [...groups.values()][0];
+            await call('sendMessage', {chat_id:id, text:'✅ Essen randevu botu: grup bağlantı testi başarılı.\n\nGitHub Secrets için TELEGRAM_CHAT_ID değeri:\n' + id + '\n\nBu değeri GitHub ayarına ekleyin. Düzenli bildirim kurulumu henüz tamamlanmadı.'});
+            console.log('Gruba test mesajı ve sohbet kimliği gönderildi. Kimlik ve anahtar günlüklere yazılmadı.');
+          } catch (error) { console.error(error.message); process.exitCode = 1; }
+          NODE
