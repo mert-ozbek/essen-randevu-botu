@@ -52,7 +52,7 @@ async function scan() {
     await page.locator('#next-button').click();
     await page.getByRole('heading', { name: 'Schritt 4 - Benötigte Unterlagen', exact: true }).waitFor();
     await page.locator('#next-button').click();
-    await page.getByRole('button', { name: 'Klicken Sie hier, um den Kalender zu öffnen', exact: true }).click();
+    await page.locator('#date-select').click();
     await page.locator('.duet-date__dialog.is-active').waitFor();
     const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
     today.setHours(0, 0, 0, 0);
