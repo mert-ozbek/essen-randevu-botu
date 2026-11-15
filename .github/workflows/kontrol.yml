@@ -1,0 +1,37 @@
+name: Essen 16d randevu kontrolü
+on:
+  workflow_dispatch:
+    inputs:
+      scan_only:
+        description: 'Telegram göndermeden yalnızca siteyi test et'
+        type: boolean
+        default: true
+  schedule:
+    - cron: '3-58/5 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: essen-randevu-kontrol
+  cancel-in-progress: false
+jobs:
+  kontrol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Bildirim ayarlarını doğrula
+        if: ${{ !inputs.scan_only }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node -e "if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) { console.error('Telegram Secrets eksik'); process.exit(1) }"
+      - run: npm run check
+        env:
+          GITHUB_ACTIONS: ${{ inputs.scan_only && 'false' || 'true' }}
+          TELEGRAM_BOT_TOKEN: ${{ !inputs.scan_only && secrets.TELEGRAM_BOT_TOKEN || '' }}
+          TELEGRAM_CHAT_ID: ${{ !inputs.scan_only && secrets.TELEGRAM_CHAT_ID || '' }}
