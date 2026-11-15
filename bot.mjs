@@ -2,19 +2,20 @@ import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { readCalendarDocument, datesInWindow } from './calendar.mjs';
+import { statusMessage, failureMessage } from './status.mjs';
 
 const URL = 'https://termine.essen.de/?link=9eb2';
 const interval = Number(process.env.CHECK_SECONDS || 300);
 if (!Number.isFinite(interval) || interval < 60) throw new Error('CHECK_SECONDS en az 60 olmalı.');
 const once = process.argv.includes('--once');
 const audit = process.env.BOT_AUDIT === '1';
+const statusReport = process.env.STATUS_REPORT === '1';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Berlin' });
 let stopping = false;
 process.on('SIGINT', () => { stopping = true; process.exit(0); });
 
-async function alertUser(dates) {
-  console.log('\x07\n*** UYGUN GÜN BULUNDU ***\n' + dates.join('\n') + '\n' + URL);
+async function sendTelegram(message) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chat = process.env.TELEGRAM_CHAT_ID;
   if (token && chat) {
@@ -22,14 +23,19 @@ async function alertUser(dates) {
     try {
       response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chat, text: `Essen 16d: seçilebilir gün bulundu!\n${dates.join('\n')}\n${URL}\nRandevu oluşturulmadı; siteden kontrol edin.` }),
+        body: JSON.stringify({ chat_id: chat, text: message }),
         signal: AbortSignal.timeout(20000)
       });
     } catch { throw new Error('Telegram bağlantısı başarısız; bildirim gönderilemedi.'); }
     if (!response.ok || !(await response.json()).ok) throw new Error('Telegram bildirimi gönderilemedi. Secrets ayarlarını kontrol edin.');
-  } else if (process.env.GITHUB_ACTIONS === 'true') {
+  } else if (process.env.GITHUB_ACTIONS === 'true' || statusReport) {
     throw new Error('Telegram Secrets eksik; bildirim gönderilemedi.');
   }
+}
+
+async function alertUser(dates) {
+  console.log('\x07\n*** UYGUN GÜN BULUNDU ***\n' + dates.join('\n') + '\n' + URL);
+  await sendTelegram(`Essen 16d: seçilebilir gün bulundu!\n${dates.join('\n')}\n${URL}\nRandevu oluşturulmadı; siteden kontrol edin.`);
   if (process.platform === 'win32') {
     // Sabit komut: site içeriği PowerShell koduna eklenmez.
     spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command',
@@ -91,12 +97,13 @@ async function scan() {
     }
     if (new Set(months).size !== 13) throw new Error('Bütün aylar taranamadı.');
     if (audit) await writeFile('audit/report.json', JSON.stringify({time: stamp(), start:iso(today), end:iso(end), months:evidence, dates},null,2));
-    await writeFile('son-kontrol.json', JSON.stringify({ time: stamp(), months, dates }, null, 2));
+    const result = { time: stamp(), start: iso(today), end: iso(end), months, dates };
+    await writeFile('son-kontrol.json', JSON.stringify(result, null, 2));
     if (dates.length) {
       await writeFile('uygun-gunler.json', JSON.stringify({ time: stamp(), dates, url: URL }, null, 2));
       await page.screenshot({ path: 'uygun-gun-takvim.png', fullPage: true });
     }
-    return dates;
+    return result;
   } catch (error) {
     await mkdir('hatalar', { recursive: true });
     await page.screenshot({ path: 'hatalar/son-hata.png', fullPage: true }).catch(() => {});
@@ -107,15 +114,21 @@ async function scan() {
 let previous = '', failures = 0;
 do {
   try {
-    const dates = await scan();
+    const result = await scan();
+    const { dates } = result;
     failures = 0;
     console.log(`[${stamp()}] ${dates.length ? dates.join(', ') : 'Uygun gün yok.'}`);
     const current = dates.join(',');
     if (current && current !== previous) await alertUser(dates);
+    if (statusReport) await sendTelegram(statusMessage(result));
     previous = current;
   } catch (error) {
     failures++;
     console.error(`[${stamp()}] KONTROL BAŞARISIZ (randevu yok anlamına gelmez): ${error.message}`);
+    if (statusReport) {
+      try { await sendTelegram(failureMessage(stamp())); }
+      catch { console.error('Durum uyarısı Telegram üzerinden de gönderilemedi. GitHub Actions kontrol edilmeli.'); }
+    }
     if (once) process.exitCode = 1;
   }
   if (once || stopping) break;
