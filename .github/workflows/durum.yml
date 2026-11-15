@@ -1,0 +1,28 @@
+name: Bot durum raporu
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */3 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: essen-randevu-kontrol
+  cancel-in-progress: false
+jobs:
+  durum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test calendar.test.mjs status.test.mjs
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Tara ve gruba durum raporu gönder
+        run: npm run check
+        env:
+          STATUS_REPORT: '1'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
