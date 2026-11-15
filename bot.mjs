@@ -1,11 +1,13 @@
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { readCalendarDocument, datesInWindow } from './calendar.mjs';
 
 const URL = 'https://termine.essen.de/?link=9eb2';
 const interval = Number(process.env.CHECK_SECONDS || 300);
 if (!Number.isFinite(interval) || interval < 60) throw new Error('CHECK_SECONDS en az 60 olmalı.');
 const once = process.argv.includes('--once');
+const audit = process.env.BOT_AUDIT === '1';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Berlin' });
 let stopping = false;
@@ -57,23 +59,29 @@ async function scan() {
     const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
     today.setHours(0, 0, 0, 0);
     const end = new Date(today); end.setFullYear(end.getFullYear() + 1);
-    const dates = [], months = [];
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dates = [], months = [], evidence = [];
+    if (audit) await mkdir('audit', { recursive: true });
     // İçinde bulunduğumuz ay + 12 ay: son ayda yıldönümünü aşan günler elenir.
     for (let i = 0; i < 13; i++) {
-      const state = await page.evaluate(() => {
+      // A delayed/partial render is an error, never an empty-availability result.
+      await page.waitForFunction(({year, month}) => {
+        const m = Number(document.querySelector('.duet-date__select--month')?.value);
+        const y = Number(document.querySelector('.duet-date__select--year')?.value);
+        const expected = new Date(year, month + 1, 0).getDate();
         const cells = [...document.querySelectorAll('.duet-date__day.is-month')];
-        if (cells.length < 28) throw new Error('Takvim günleri yüklenmedi.');
-        return {
-          year: Number(document.querySelector('.duet-date__select--year').value),
-          month: Number(document.querySelector('.duet-date__select--month').value),
-          days: cells.filter(e => e.getAttribute('aria-disabled') === 'false' && !e.classList.contains('is-disabled'))
-            .map(e => Number(e.querySelector('[aria-hidden="true"]').textContent))
-        };
-      });
+        return m === month && y === year && cells.length === expected && cells.every((e,j) => Number(e.querySelector('[aria-hidden="true"]')?.textContent) === j + 1);
+      }, {year: today.getFullYear() + Math.floor((today.getMonth()+i)/12), month: (today.getMonth()+i)%12});
+      const state = await page.evaluate(readCalendarDocument);
       months.push(`${state.year}-${String(state.month + 1).padStart(2, '0')}`);
-      for (const day of state.days) {
-        const date = new Date(state.year, state.month, day);
-        if (date >= today && date <= end) dates.push(`${state.year}-${String(state.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+      const key = months.at(-1);
+      console.log(`${key}: ${state.totalDays} gün okundu, ${state.days.length} seçilebilir gün.`);
+      dates.push(...datesInWindow(state, iso(today), iso(end)));
+      evidence.push(state);
+      if (audit) {
+        await page.locator('#date-picker-container').screenshot({path: `audit/${key}.png`});
+        await writeFile(`audit/${key}.html`, await page.locator('#date-picker-container').evaluate(e => e.outerHTML));
+        await writeFile(`audit/${key}.json`, JSON.stringify(state, null, 2));
       }
       if (i < 12) {
         await page.getByRole('button', { name: 'Nächster Monat', exact: true }).click();
@@ -82,6 +90,7 @@ async function scan() {
       }
     }
     if (new Set(months).size !== 13) throw new Error('Bütün aylar taranamadı.');
+    if (audit) await writeFile('audit/report.json', JSON.stringify({time: stamp(), start:iso(today), end:iso(end), months:evidence, dates},null,2));
     await writeFile('son-kontrol.json', JSON.stringify({ time: stamp(), months, dates }, null, 2));
     if (dates.length) {
       await writeFile('uygun-gunler.json', JSON.stringify({ time: stamp(), dates, url: URL }, null, 2));
