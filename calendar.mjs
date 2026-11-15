@@ -18,7 +18,8 @@ export function readCalendarDocument() {
     const availableTitle = title.startsWith('Datum ist verfügbar');
     const unavailableTitle = title.startsWith('Datum nicht verfügbar');
     const available = !nativeDisabled && !classDisabled && aria !== 'true' && availableTitle;
-    const unavailable = aria === 'true' && classDisabled && unavailableTitle;
+    // Newly added cells (e.g. Feb -> March 29-31) can omit their tooltip.
+    const unavailable = aria === 'true' && classDisabled && !availableTitle && (unavailableTitle || title === '');
     if (!available && !unavailable) throw new Error('Gün durumu belirsiz veya çelişiyor; takvim işaretleri değişmiş.');
     if (!Number.isInteger(day) || day < 1 || day > expectedCount) throw new Error('Geçersiz gün numarası.');
     if (aria === 'false' && (classDisabled || nativeDisabled)) throw new Error('Günün seçilebilirlik işaretleri çelişiyor.');
